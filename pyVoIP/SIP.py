@@ -710,10 +710,8 @@ class SIPMessage:
                         or attribute == "sendonly"
                         or attribute == "inactive"
                     ):
-                        self.body["a"][
-                            "transmit_type"
-                        ] = pyVoIP.RTP.TransmitType(
-                            attribute
+                        self.body["a"]["transmit_type"] = (
+                            pyVoIP.RTP.TransmitType(attribute)
                         )  # noqa: E501
             else:
                 self.body[header] = data
@@ -818,6 +816,7 @@ class SIPClient:
         self.server = server
         self.port = port
         self.myIP = myIP
+        self.receivedIP = None
         self.username = username
         self.password = password
 
@@ -830,6 +829,7 @@ class SIPClient:
         self.tagLibrary = {"register": self.gen_tag()}
 
         self.myPort = myPort
+        self.receivePort = None
 
         self.default_expires = 120
         self.register_timeout = 30
@@ -846,6 +846,18 @@ class SIPClient:
         self.registerThread: Optional[Timer] = None
         self.registerFailures = 0
         self.recvLock = Lock()
+
+    def get_my_ip(self) -> str:
+        return str(self.receivedIP) if self.receivedIP else str(self.myIP)
+
+    def set_my_ip(self, ip: str) -> None:
+        self.receivedIP = str(ip)
+
+    def get_my_port(self) -> int:
+        return str(self.receivePort) if self.receivePort else str(self.myPort)
+
+    def set_my_port(self, port: int) -> None:
+        self.receivePort = str(port)
 
     def recv_loop(self) -> None:
         while self.NSD:
@@ -1132,7 +1144,7 @@ class SIPClient:
     def gen_first_response(self, deregister=False) -> str:
         regRequest = f"REGISTER sip:{self.server} SIP/2.0\r\n"
         regRequest += (
-            f"Via: SIP/2.0/UDP {self.myIP}:{self.myPort};"
+            f"Via: SIP/2.0/UDP {self.get_my_ip()}:{self.get_my_port()};"
             + f"branch={self.gen_branch()};rport\r\n"
         )
         regRequest += (
@@ -1178,7 +1190,7 @@ class SIPClient:
     def gen_subscribe(self, response: SIPMessage) -> str:
         subRequest = f"SUBSCRIBE sip:{self.username}@{self.server} SIP/2.0\r\n"
         subRequest += (
-            f"Via: SIP/2.0/UDP {self.myIP}:{self.myPort};"
+            f"Via: SIP/2.0/UDP {self.get_my_ip()}:{self.get_my_port()};"
             + f"branch={self.gen_branch()};rport\r\n"
         )
         subRequest += (
@@ -1192,7 +1204,7 @@ class SIPClient:
         # TODO: check if transport is needed
         subRequest += (
             "Contact: "
-            + f"<sip:{self.username}@{self.myIP}:{self.myPort};"
+            + f"<sip:{self.username}@{self.get_my_ip()}:{self.get_my_port()};"
             + "transport=UDP>;+sip.instance="
             + f'"<urn:uuid:{self.urnUUID}>"\r\n'
         )
@@ -1222,7 +1234,7 @@ class SIPClient:
 
         regRequest = f"REGISTER sip:{self.server} SIP/2.0\r\n"
         regRequest += (
-            f"Via: SIP/2.0/UDP {self.myIP}:{self.myPort};branch="
+            f"Via: SIP/2.0/UDP {self.get_my_ip()}:{self.get_my_ip()};branch="
             + f"{self.gen_branch()};rport\r\n"
         )
         regRequest += (
@@ -1239,7 +1251,7 @@ class SIPClient:
         regRequest += f"CSeq: {self.registerCounter.next()} REGISTER\r\n"
         regRequest += (
             "Contact: "
-            + f"<sip:{self.username}@{self.myIP}:{self.myPort};"
+            + f"<sip:{self.username}@{self.get_my_ip()}:{self.get_my_port()};"
             + "transport=UDP>;+sip.instance="
             + f'"<urn:uuid:{self.urnUUID}>"\r\n'
         )
@@ -1485,16 +1497,18 @@ class SIPClient:
 
         invRequest = f"INVITE sip:{number}@{self.server} SIP/2.0\r\n"
         invRequest += (
-            f"Via: SIP/2.0/UDP {self.myIP}:{self.myPort};branch="
+            f"Via: SIP/2.0/UDP {self.get_my_ip()}:{self.get_my_port()};branch="
             + f"{branch}\r\n"
         )
         invRequest += "Max-Forwards: 70\r\n"
         invRequest += (
             "Contact: "
-            + f"<sip:{self.username}@{self.myIP}:{self.myPort}>\r\n"
+            + f"<sip:{self.username}@{self.get_my_ip()}:{self.get_my_port()}>\r\n"
         )
         invRequest += f"To: <sip:{number}@{self.server}>\r\n"
-        invRequest += f"From: <sip:{self.username}@{self.myIP}>;tag={tag}\r\n"
+        invRequest += (
+            f"From: <sip:{self.username}@{self.get_my_ip()}>;tag={tag}\r\n"
+        )
         invRequest += f"Call-ID: {call_id}\r\n"
         invRequest += f"CSeq: {self.inviteCounter.next()} INVITE\r\n"
         invRequest += f"Allow: {(', '.join(pyVoIP.SIPCompatibleMethods))}\r\n"
@@ -1539,7 +1553,7 @@ class SIPClient:
         byeRequest += "Max-Forwards: 70\r\n"
         byeRequest += (
             "Contact: "
-            + f"<sip:{self.username}@{self.myIP}:{self.myPort}>\r\n"
+            + f"<sip:{self.username}@{self.get_my_ip()}:{self.get_my_port()}>\r\n"
         )
         byeRequest += f"User-Agent: pyVoIP {pyVoIP.__version__}\r\n"
         byeRequest += f"Allow: {(', '.join(pyVoIP.SIPCompatibleMethods))}\r\n"
@@ -1860,6 +1874,24 @@ class SIPClient:
         debug(response.raw)
 
         if response.status == SIPStatus.OK:
+            if (
+                len(response.headers["Via"]) > 0
+                and "received" in response.headers["Via"][0]
+                and "rport" in response.headers["Via"][0]
+            ):
+                # self.my_public_ip = response.headers['Via'][0]['received']
+                # self.my_public_port = response.headers['Via'][0]['rport']
+                self.set_my_ip(response.headers["Via"][0]["received"])
+                self.set_my_port(response.headers["Via"][0]["rport"])
+
+                debug(
+                    f"{self.__class__.__name__} after received Message register 1 received {self.get_my_ip()} rport {self.get_my_port()}"
+                )
+
+                print(
+                    f"{self.__class__.__name__} after received Message register 1 received {self.get_my_ip()} rport {self.get_my_port()}"
+                )
+
             return True
         else:
             raise InvalidAccountInfoError(
