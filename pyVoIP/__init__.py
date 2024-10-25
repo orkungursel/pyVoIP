@@ -4,7 +4,7 @@ version_info = (1, 6, "8")
 
 __version__ = ".".join([str(x) for x in version_info])
 
-DEBUG = False
+DEBUG = True
 
 """
 The higher this variable is, the more often RTP packets are sent.

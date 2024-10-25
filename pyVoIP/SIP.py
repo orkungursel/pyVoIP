@@ -848,13 +848,17 @@ class SIPClient:
         self.recvLock = Lock()
 
     def get_my_ip(self) -> str:
-        return str(self.receivedIP) if self.receivedIP else str(self.myIP)
+        ip = str(self.receivedIP) if self.receivedIP else str(self.myIP)
+        print(f"get_my_ip: {ip}")
+        return ip
 
     def set_my_ip(self, ip: str) -> None:
         self.receivedIP = str(ip)
 
     def get_my_port(self) -> int:
-        return str(self.receivePort) if self.receivePort else str(self.myPort)
+        port = str(self.receivePort) if self.receivePort else str(self.myPort)
+        print(f"get_my_port: {port}")
+        return int(port)
 
     def set_my_port(self, port: int) -> None:
         self.receivePort = str(port)
@@ -1176,6 +1180,8 @@ class SIPClient:
         regRequest += "Content-Length: 0"
         regRequest += "\r\n\r\n"
 
+        print(regRequest)
+
         return regRequest
 
     def genSubscribe(self, response: SIPMessage) -> str:
@@ -1234,7 +1240,7 @@ class SIPClient:
 
         regRequest = f"REGISTER sip:{self.server} SIP/2.0\r\n"
         regRequest += (
-            f"Via: SIP/2.0/UDP {self.get_my_ip()}:{self.get_my_ip()};branch="
+            f"Via: SIP/2.0/UDP {self.myIP}:{self.myPort};branch="
             + f"{self.gen_branch()};rport\r\n"
         )
         regRequest += (
@@ -1251,7 +1257,7 @@ class SIPClient:
         regRequest += f"CSeq: {self.registerCounter.next()} REGISTER\r\n"
         regRequest += (
             "Contact: "
-            + f"<sip:{self.username}@{self.get_my_ip()}:{self.get_my_port()};"
+            + f"<sip:{self.username}@{self.myIP}:{self.myPort};"
             + "transport=UDP>;+sip.instance="
             + f'"<urn:uuid:{self.urnUUID}>"\r\n'
         )
